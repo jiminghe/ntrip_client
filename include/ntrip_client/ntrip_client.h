@@ -1,51 +1,61 @@
-#ifndef NTRIP_CLIENT_NTRIP_CLIENT_H_
-#define NTRIP_CLIENT_NTRIP_CLIENT_H_
+#ifndef NTRIP_CLIENT_NTRIP_CLIENT_HPP_
+#define NTRIP_CLIENT_NTRIP_CLIENT_HPP_
 
-#include <ros/ros.h>
-#include <nmea_msgs/Sentence.h>
-#include <mavros_msgs/RTCM.h>
-#include <boost/asio.hpp>
-#include <boost/bind.hpp>
-#include <boost/thread.hpp>
-#include <string>
-#include <queue>
-#include <mutex>
 #include <memory>
-#include <iomanip>
-#include "rtcm_parser.h"
+#include <mutex>
+#include <queue>
+#include <string>
+#include <vector>
+
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
+
+#include "boost/asio.hpp"
+#include "boost/bind.hpp"
+#include "boost/thread.hpp"
+#include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "mavros_msgs/msg/rtcm.hpp"
+#include "nmea_msgs/msg/sentence.hpp"
+#include "rclcpp/rclcpp.hpp"
+
+#include "ntrip_client/rtcm_parser.h"
 
 namespace ntrip_client
 {
-    // declare constant before the class.
-    const int NTRIP_CONNECT_TIMEOUT = 300;
 
-    class NtripClient
+    // Declare constant before the class.
+    const int kNtripConnectTimeout = 300;
+
+    class NtripClient : public rclcpp::Node
     {
     public:
-        NtripClient(ros::NodeHandle &nh, ros::NodeHandle &private_nh);
+        explicit NtripClient();
         ~NtripClient();
+
         bool Start();
         void Stop();
 
     private:
         // ROS related
-        ros::NodeHandle &nh_;
-        ros::NodeHandle &private_nh_;
-        ros::Subscriber nmea_sub_;
-        ros::Publisher rtcm_pub_;
-        ros::Timer connection_timer_;
-        ros::Timer status_timer_;
+        rclcpp::Subscription<nmea_msgs::msg::Sentence>::SharedPtr nmea_sub_;
+        rclcpp::Publisher<mavros_msgs::msg::RTCM>::SharedPtr rtcm_pub_;
+        rclcpp::TimerBase::SharedPtr connection_timer_;
+        rclcpp::TimerBase::SharedPtr status_timer_;
+        rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostic_pub_;
 
-        // Parameters
-        std::string host_;
-        std::string port_;
-        std::string mountpoint_;
-        std::string username_;
-        std::string password_;
-        double nmea_input_rate_;
-        double update_rate_;
-        double reconnect_delay_;
-        int max_reconnect_attempts_;
+        // Statistics
+        size_t bytes_received_;
+        size_t rtcm_messages_count_;
+        rclcpp::Time last_nmea_time_;
+        rclcpp::Time last_rtcm_time_;
+        int reconnect_attempts_;
+        int nmea_msg_counter_;
+
+        // Control flags
+        bool debug_;
+        bool is_connected_;
+        bool should_exit_;
+        bool send_default_gga_;
+        bool output_rtcm_details_;
 
         // Networking
         boost::asio::io_service io_service_;
@@ -54,51 +64,46 @@ namespace ntrip_client
         boost::asio::streambuf response_;
         std::unique_ptr<boost::thread> io_thread_;
         std::vector<char> receive_buffer_;
-        bool is_connected_;
-        bool should_exit_;
-        std::mutex socket_mutex_;
-
-        // Statistics
-        size_t bytes_received_;
-        size_t rtcm_messages_count_;
-        ros::Time last_nmea_time_;
-        ros::Time last_rtcm_time_;
-        int reconnect_attempts_;
-
-        // Message queues
-        std::mutex nmea_mutex_;
-
-        // Default GGA message
-        std::string default_gga_;
-        int nmea_msg_counter_;
-        int nmea_skip_count_; // How many messages to skip (calculated from input rate and desired rate)
-        bool send_default_gga_;
-        bool output_rtcm_details_;
-
-        int port_number_;
-
         std::unique_ptr<boost::asio::io_service::work> work_;
 
-        ros::Publisher diagnostic_pub_;
-        bool debug_;
+        // Parameters
+        std::string host_;
+        std::string port_;
+        std::string mountpoint_;
+        std::string username_;
+        std::string password_;
+        std::string default_gga_;
+        double nmea_input_rate_;
+        double update_rate_;
+        double reconnect_delay_;
+        int max_reconnect_attempts_;
+        int port_number_;
+        int nmea_skip_count_;
 
+        // Mutexes
+        std::mutex socket_mutex_;
+        std::mutex nmea_mutex_;
+
+        // RTCM Parser
         std::unique_ptr<RtcmParser> rtcm_parser_;
 
         // Methods
         bool Initialize();
         void Connect();
         void Disconnect();
-        void HandleNmeaMessage(const nmea_msgs::Sentence::ConstPtr &msg);
-        void CheckConnection(const ros::TimerEvent &event);
-        void PublishStatus(const ros::TimerEvent &event);
+        void HandleNmeaMessage(const nmea_msgs::msg::Sentence::SharedPtr msg);
+        void CheckConnection();
+        void PublishStatus();
         bool SendHttpRequest();
         void ReadData();
-        void HandleRead(const boost::system::error_code &error, size_t bytes_transferred);
+        void HandleRead(const boost::system::error_code &error,
+                        size_t bytes_transferred);
         std::string CreateAuthHeader() const;
         void HandleError(const std::string &error_msg, bool fatal = false);
         bool ValidateParameters() const;
+        void DeclareParameters();
     };
 
 } // namespace ntrip_client
 
-#endif // NTRIP_CLIENT_NTRIP_CLIENT_H_
+#endif // NTRIP_CLIENT_NTRIP_CLIENT_HPP_

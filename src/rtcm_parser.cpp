@@ -1,17 +1,17 @@
 #include "ntrip_client/rtcm_parser.h"
-#include <sstream>
+
 #include <iomanip>
+#include <sstream>
 
 namespace ntrip_client
 {
 
-    RtcmParser::RtcmParser(ros::Publisher &rtcm_pub, bool debug)
+    RtcmParser::RtcmParser(
+        rclcpp::Publisher<mavros_msgs::msg::RTCM>::SharedPtr rtcm_pub, bool debug)
         : rtcm_pub_(rtcm_pub),
           bytes_required_(kRtcm3HeaderLength),
           in_message_(false),
-          debug_(debug)
-    {
-    }
+          debug_(debug) {}
 
     void RtcmParser::ProcessData(const uint8_t *data, size_t length)
     {
@@ -34,7 +34,7 @@ namespace ntrip_client
                 LogDebug("Publishing RTCM message with " +
                          std::to_string(valid_messages_.front().data.size()) + " bytes");
             }
-            rtcm_pub_.publish(valid_messages_.front());
+            rtcm_pub_->publish(valid_messages_.front());
             valid_messages_.pop_front();
         }
     }
@@ -75,7 +75,8 @@ namespace ntrip_client
                 // Remove invalid data
                 if (start_pos > 0)
                 {
-                    LogWarn("Discarded " + std::to_string(start_pos) + " bytes of invalid data");
+                    LogWarn("Discarded " + std::to_string(start_pos) +
+                            " bytes of invalid data");
                     raw_buffer_.erase(raw_buffer_.begin(),
                                       raw_buffer_.begin() + start_pos);
                 }
@@ -84,15 +85,18 @@ namespace ntrip_client
             }
 
             // Parse message length
-            const uint16_t payload_length = ((raw_buffer_[1] & 0x03) << 8) | raw_buffer_[2];
-            const size_t total_length = kRtcm3HeaderLength + payload_length + kCrc24qLength;
+            const uint16_t payload_length =
+                ((raw_buffer_[1] & 0x03) << 8) | raw_buffer_[2];
+            const size_t total_length =
+                kRtcm3HeaderLength + payload_length + kCrc24qLength;
 
             if (raw_buffer_.size() < total_length)
             {
                 if (debug_)
                 {
-                    LogDebug("Incomplete message: have " + std::to_string(raw_buffer_.size()) +
-                             " bytes, need " + std::to_string(total_length));
+                    LogDebug("Incomplete message: have " +
+                             std::to_string(raw_buffer_.size()) + " bytes, need " +
+                             std::to_string(total_length));
                 }
                 bytes_required_ = total_length;
                 return;
@@ -103,21 +107,21 @@ namespace ntrip_client
             if (ValidateCRC24Q(msg_start, total_length))
             {
                 // Get message type for debugging
-                uint16_t msg_type = ((msg_start[1] & 0xFC) << 2) | ((msg_start[2] & 0xF0) >> 4);
+                uint16_t msg_type =
+                    ((msg_start[1] & 0xFC) << 2) | ((msg_start[2] & 0xF0) >> 4);
 
                 if (debug_)
                 {
-                    LogDebug("Valid message: type=" + std::to_string(msg_type) +
-                             " (" + GetMessageDescription(msg_type) +
+                    LogDebug("Valid message: type=" + std::to_string(msg_type) + " (" +
+                             GetMessageDescription(msg_type) +
                              "), length=" + std::to_string(payload_length));
                     LogDebug("Message data: " +
                              ToHexString(msg_start, std::min(total_length, size_t(32))));
                 }
 
-                mavros_msgs::RTCM rtcm_msg;
-                rtcm_msg.header.stamp = ros::Time::now();
+                auto rtcm_msg = mavros_msgs::msg::RTCM();
                 rtcm_msg.data.assign(msg_start, msg_start + total_length);
-                valid_messages_.push_back(rtcm_msg);
+                valid_messages_.push_back(std::move(rtcm_msg));
             }
             else
             {
@@ -131,6 +135,34 @@ namespace ntrip_client
             in_message_ = false;
             bytes_required_ = kRtcm3HeaderLength;
         }
+    }
+
+    bool RtcmParser::ValidateCRC24Q(const uint8_t *data, size_t length) const
+    {
+        if (length < kRtcm3HeaderLength + kCrc24qLength)
+        {
+            return false;
+        }
+
+        crc_24q_type crc_24q;
+        crc_24q.process_bytes(data, length - kCrc24qLength);
+
+        const uint32_t computed_crc = crc_24q.checksum();
+        const uint32_t received_crc = (data[length - 3] << 16) |
+                                      (data[length - 2] << 8) |
+                                      data[length - 1];
+
+        if (debug_)
+        {
+            std::stringstream ss;
+            ss << std::hex << std::uppercase
+               << "CRC check - Computed: 0x" << std::setfill('0') << std::setw(6)
+               << computed_crc << ", Received: 0x" << std::setfill('0') << std::setw(6)
+               << received_crc;
+            LogDebug(ss.str());
+        }
+
+        return computed_crc == received_crc;
     }
 
     size_t RtcmParser::FindNextMessage(const std::vector<uint8_t> &buffer) const
@@ -163,51 +195,6 @@ namespace ntrip_client
         return std::string::npos;
     }
 
-    bool RtcmParser::ValidateCRC24Q(const uint8_t *data, size_t length) const
-    {
-        if (length < kRtcm3HeaderLength + kCrc24qLength)
-        {
-            return false;
-        }
-
-        crc_24q_type crc_24q;
-        crc_24q.process_bytes(data, length - kCrc24qLength);
-
-        const uint32_t computed_crc = crc_24q.checksum();
-        const uint32_t received_crc = (data[length - 3] << 16) |
-                                      (data[length - 2] << 8) |
-                                      data[length - 1];
-
-        if (debug_)
-        {
-            std::stringstream ss;
-            ss << std::hex << std::uppercase
-               << "CRC check - Computed: 0x" << std::setfill('0') << std::setw(6)
-               << computed_crc << ", Received: 0x" << std::setfill('0') << std::setw(6)
-               << received_crc;
-            LogDebug(ss.str());
-        }
-
-        return computed_crc == received_crc;
-    }
-
-    std::string RtcmParser::ToHexString(const uint8_t *data, size_t length)
-    {
-        std::stringstream ss;
-        for (size_t i = 0; i < length; ++i)
-        {
-            if (i > 0)
-                ss << " ";
-            ss << std::uppercase << std::hex << std::setfill('0') << std::setw(2)
-               << static_cast<int>(data[i]);
-        }
-        if (length < 32)
-        {
-            ss << "...";
-        }
-        return ss.str();
-    }
-
     std::string RtcmParser::GetMessageDescription(uint16_t msg_type) const
     {
         if (msg_type >= 1071 && msg_type <= 1077)
@@ -233,22 +220,39 @@ namespace ntrip_client
         return "Other RTCM3 message";
     }
 
+    std::string RtcmParser::ToHexString(const uint8_t *data, size_t length)
+    {
+        std::stringstream ss;
+        for (size_t i = 0; i < length; ++i)
+        {
+            if (i > 0)
+                ss << " ";
+            ss << std::uppercase << std::hex << std::setfill('0') << std::setw(2)
+               << static_cast<int>(data[i]);
+        }
+        if (length < 32)
+        {
+            ss << "...";
+        }
+        return ss.str();
+    }
+
     void RtcmParser::LogDebug(const std::string &msg) const
     {
         if (debug_)
         {
-            ROS_DEBUG_STREAM("RTCMParser: " << msg);
+            RCLCPP_DEBUG(rclcpp::get_logger("rtcm_parser"), "RTCMParser: %s", msg.c_str());
         }
     }
 
     void RtcmParser::LogWarn(const std::string &msg) const
     {
-        ROS_WARN_STREAM("RTCMParser: " << msg);
+        RCLCPP_WARN(rclcpp::get_logger("rtcm_parser"), "RTCMParser: %s", msg.c_str());
     }
 
     void RtcmParser::LogError(const std::string &msg) const
     {
-        ROS_ERROR_STREAM("RTCMParser: " << msg);
+        RCLCPP_ERROR(rclcpp::get_logger("rtcm_parser"), "RTCMParser: %s", msg.c_str());
     }
 
 } // namespace ntrip_client

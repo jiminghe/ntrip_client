@@ -1,55 +1,59 @@
-#ifndef NTRIP_CLIENT_RTCM_PARSER_H_
-#define NTRIP_CLIENT_RTCM_PARSER_H_
+#ifndef NTRIP_CLIENT_RTCM_PARSER_HPP_
+#define NTRIP_CLIENT_RTCM_PARSER_HPP_
 
-#include <vector>
 #include <deque>
-#include <ros/ros.h>
-#include <mavros_msgs/RTCM.h>
-#include <boost/crc.hpp>
+#include <memory>
+#include <string>
+#include <vector>
 
-namespace ntrip_client
-{
+#include "boost/crc.hpp"
+#include "mavros_msgs/msg/rtcm.hpp"
+#include "rclcpp/rclcpp.hpp"
 
-    class RtcmParser
-    {
-    public:
-        explicit RtcmParser(ros::Publisher &rtcm_pub, bool debug = false);
+namespace ntrip_client {
 
-        // Process new data and optionally publish messages
-        void ProcessData(const uint8_t *data, size_t length);
+class RtcmParser {
+ public:
+  explicit RtcmParser(
+      rclcpp::Publisher<mavros_msgs::msg::RTCM>::SharedPtr rtcm_pub,
+      bool debug = false);
 
-        // Publish any pending messages
-        void PublishPendingMessages();
+  // Process new data and optionally publish messages
+  void ProcessData(const uint8_t* data, size_t length);
 
-    private:
-        static constexpr uint8_t kRtcm3Preamble = 0xD3;
-        static constexpr size_t kRtcm3HeaderLength = 3;
-        static constexpr size_t kCrc24qLength = 3;
-        static constexpr size_t kMaxPayloadLength = 1023; // RTCM 3.x maximum length
+  // Publish any pending messages
+  void PublishPendingMessages();
 
-        void ProcessBuffer();
-        bool ValidateCRC24Q(const uint8_t *data, size_t length) const;
-        size_t FindNextMessage(const std::vector<uint8_t> &buffer) const;
-        std::string GetMessageDescription(uint16_t msg_type) const;
-        std::string ToHexString(const uint8_t *data, size_t length);
+ private:
+  static constexpr uint8_t kRtcm3Preamble = 0xD3;
+  static constexpr size_t kRtcm3HeaderLength = 3;
+  static constexpr size_t kCrc24qLength = 3;
+  static constexpr size_t kMaxPayloadLength = 1023;  // RTCM 3.x maximum length
 
-        // Logging helpers
-        void LogDebug(const std::string &msg) const;
-        void LogWarn(const std::string &msg) const;
-        void LogError(const std::string &msg) const;
+  void ProcessBuffer();
+  bool ValidateCRC24Q(const uint8_t* data, size_t length) const;
+  size_t FindNextMessage(const std::vector<uint8_t>& buffer) const;
+  std::string GetMessageDescription(uint16_t msg_type) const;
+  std::string ToHexString(const uint8_t* data, size_t length);
 
-        ros::Publisher &rtcm_pub_;
-        std::vector<uint8_t> raw_buffer_;
-        std::deque<mavros_msgs::RTCM> valid_messages_;
+  // Logging helpers
+  void LogDebug(const std::string& msg) const;
+  void LogWarn(const std::string& msg) const;
+  void LogError(const std::string& msg) const;
 
-        size_t bytes_required_;
-        bool in_message_;
-        bool debug_;
+  rclcpp::Publisher<mavros_msgs::msg::RTCM>::SharedPtr rtcm_pub_;
+  std::vector<uint8_t> raw_buffer_;
+  std::deque<mavros_msgs::msg::RTCM> valid_messages_;
 
-        // CRC calculator
-        typedef boost::crc_optimal<24, 0x1864CFB, 0x0, 0x0, false, false> crc_24q_type;
-    };
+  size_t bytes_required_;
+  bool in_message_;
+  bool debug_;
 
-} // namespace ntrip_client
+  // CRC calculator
+  typedef boost::crc_optimal<24, 0x1864CFB, 0x0, 0x0, false, false>
+      crc_24q_type;
+};
 
-#endif // NTRIP_CLIENT_RTCM_PARSER_H_
+}  // namespace ntrip_client
+
+#endif  // NTRIP_CLIENT_RTCM_PARSER_HPP_
