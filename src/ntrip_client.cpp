@@ -52,8 +52,6 @@ namespace ntrip_client
     this->declare_parameter("reconnect_delay", 5.0);
     this->declare_parameter("max_reconnect_attempts", 0);
     this->declare_parameter("debug", false);
-    this->declare_parameter("send_default_gga", true);
-    this->declare_parameter("output_rtcm_details", false);
   }
 
   bool NtripClient::Start()
@@ -102,8 +100,6 @@ namespace ntrip_client
       reconnect_delay_ = this->get_parameter("reconnect_delay").as_double();
       max_reconnect_attempts_ = this->get_parameter("max_reconnect_attempts").as_int();
       debug_ = this->get_parameter("debug").as_bool();
-      send_default_gga_ = this->get_parameter("send_default_gga").as_bool();
-      output_rtcm_details_ = this->get_parameter("output_rtcm_details").as_bool();
 
       // Print the parameters
       RCLCPP_INFO(this->get_logger(), "Initializing NTRIP client with following parameters:");
@@ -115,7 +111,6 @@ namespace ntrip_client
       RCLCPP_INFO(this->get_logger(), "NMEA input rate: %.1f Hz", nmea_input_rate_);
       RCLCPP_INFO(this->get_logger(), "Update rate: %.1f Hz", update_rate_);
       RCLCPP_INFO(this->get_logger(), "Reconnect delay: %.1f seconds", reconnect_delay_);
-      RCLCPP_INFO(this->get_logger(), "Send default GGA: %s", send_default_gga_ ? "true" : "false");
 
       if (debug_)
       {

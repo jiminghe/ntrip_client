@@ -29,9 +29,7 @@ def generate_launch_description():
                 'max_reconnect_attempts': 0,  # 0 for infinite attempts
 
                 # Debug Configuration
-                'send_default_gga': True,    # Set to False if using real GNSS data
                 'debug': False,              # Set to True for detailed debug output
-                'output_rtcm_details': False # Set to True for RTCM message details
             }],
             # Topic Remapping
             # Adjust these if your NMEA input topic or RTCM output topic are different

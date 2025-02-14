@@ -54,8 +54,6 @@ namespace ntrip_client
         bool debug_;
         bool is_connected_;
         bool should_exit_;
-        bool send_default_gga_;
-        bool output_rtcm_details_;
 
         // Networking
         boost::asio::io_service io_service_;
