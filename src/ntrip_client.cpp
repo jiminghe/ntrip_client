@@ -310,7 +310,7 @@ namespace ntrip_client
 
         ROS_INFO("Received response: %s", response_line.c_str());
 
-        if (response_line.find("ICY 200 OK") != std::string::npos)
+        if (response_line.find("200") != std::string::npos)
         {
             ROS_INFO("NTRIP connection established successfully");
             is_connected_ = true;
